@@ -67,12 +67,12 @@ pub mod time_usage_parser {
     lazy_static! {
         // Group 1: Weeks start day
         static ref WEEK_REGEX: Regex =
-            compile_regex(r"^## (Week +\d\d?\.\d\d?(?:\.\d\d)?)(?: *- *\d\d?\.\d\d?(?:\.\d\d)?)");
+            compile_regex(r"^## (Week \d\d?\.\d\d?(?:\.\d\d)?)(?: *- *\d\d?\.\d\d?(?:\.\d\d)?)");
         // Group 1: Date
         // Gorup 2: Start Time
         // Group 3: Day range
         static ref DAY_AND_TIME_REGEX: Regex = compile_regex(
-            r"(?:(?:(\d\d?\.\d\d?(?!\d*h)) )?(\d\d?:\d\d?))|(?:\|\s+?(\d+\s*?-\s*?\d+)\s+?\|)"
+            r"(?:\|\s*?(?:(\d\d?\.\d\d?) +)?(\d\d?:\d\d)\s*?\|)|(?:\|\s*?(\d+\s*?-\s*?\d+)\s*?\|)"
         );
         // Group 1: Total spent time in hours
         static ref HOURS_REGEX: Regex = compile_regex(r"(\d(\.\d*)?)h");
@@ -218,6 +218,135 @@ pub mod time_usage_parser {
         } else {
             println!("{:#?}", weeks);
             Ok(Some(weeks))
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use anyhow::Ok;
+
+        use super::*;
+
+        /// Test if group has given string value
+        ///
+        /// ### Params
+        /// `result` result from regex
+        ///
+        /// `group` group number
+        ///
+        /// `result_str` str to test against
+        ///
+        /// ### Usage
+        /// ```
+        /// let result = regex.captures(&test_str)
+        /// test_success!(result, group, result_str)
+        /// test_success!(result, 1, "test")
+        /// ```
+        macro_rules! test_for_success {
+            ($result:ident, $group:tt, $test:tt $(, $case:literal )?) => {
+                assert!(
+                    $result.is_some()
+                    $(, $case)?
+                );
+                assert_eq!(
+                    $result.unwrap().get($group).unwrap().as_str(),
+                    $test
+                    $(, $case)?
+                );
+            };
+        }
+
+        macro_rules! test_for_fail {
+            ($result:ident $(, $case:literal )?) => {
+                assert!(
+                    $result.is_none()
+                    $(, $case)?
+                );
+            };
+            ($result:ident, $group:tt $(, $case:literal )?) => {
+                assert!(
+                    $result.is_some()
+                    $(, $case)?
+                );
+                assert!(
+                    $result.unwrap().get($group).is_none()
+                    $(, $case)?
+                );
+            };
+        }
+
+        #[test]
+        fn week_regex() -> anyhow::Result<()> {
+            // Case 1: Correct
+            let result = WEEK_REGEX.captures("## Week 25.5 - 30.5")?;
+            test_for_success!(result, 1, "Week 25.5", "Case 1");
+
+            // Case 2: Correct
+            let result = WEEK_REGEX.captures("## Week 5.5.23 - 30.5.23")?;
+            test_for_success!(result, 1, "Week 5.5.23", "Case 2");
+
+            // Case 3: Correct
+            let result = WEEK_REGEX.captures("## Week 25.05.23 - 30.5")?;
+            test_for_success!(result, 1, "Week 25.05.23", "Case 3");
+
+            // Case 4: Fail
+            let result = WEEK_REGEX.captures("## Week 2.5")?;
+            test_for_fail!(result, "Case 4");
+
+            // Case 5: Fail
+            let result = WEEK_REGEX.captures("## Week 25.5.23")?;
+            test_for_fail!(result, "Case 5");
+
+            // Case 6: Fail
+            let result = WEEK_REGEX.captures("## Week 5.05.23")?;
+            test_for_fail!(result, "Case 6");
+
+            Ok(())
+        }
+
+        macro_rules! get_as_ref {
+            ($var:tt, $call:expr) => {
+                let result = $call;
+                let $var = result.as_ref();
+            };
+        }
+
+        #[test]
+        fn day_and_time_regex() -> anyhow::Result<()> {
+            // Case 1: Correct syntax
+            get_as_ref!(
+                result,
+                DAY_AND_TIME_REGEX.captures("| 19.5 18:50 | 1h | 2. |")?
+            );
+            test_for_success!(result, 1, "19.5", "Case 1");
+            test_for_success!(result, 2, "18:50", "Case 1");
+            test_for_fail!(result, 3, "Case 1");
+
+            // Case 2: Correct syntax
+            get_as_ref!(
+                result,
+                DAY_AND_TIME_REGEX.captures("| 20:00 | 5.25h | 3. |")?
+            );
+            test_for_success!(result, 2, "20:00", "Case 2");
+            test_for_fail!(result, 1, "Case 2");
+            test_for_fail!(result, 3, "Case 2");
+
+            // Case 3: Correct syntax
+            get_as_ref!(result, DAY_AND_TIME_REGEX.captures("| 10 - 30 |  |")?);
+            test_for_success!(result, 3, "10 - 30", "Case 3");
+            test_for_fail!(result, 1, "Case 3");
+            test_for_fail!(result, 2, "Case 3");
+
+            // Case 4: Incorrect syntax
+            get_as_ref!(result, DAY_AND_TIME_REGEX.captures("|  |  |  |")?);
+            test_for_fail!(result, "Case 4");
+
+            // Case 5: Incorrect syntax
+            // Cant contain extra letters
+            get_as_ref!(result, DAY_AND_TIME_REGEX.captures("| 12.5h 18:30 | | |")?);
+            test_for_fail!(result, "Case 5");
+
+            Ok(())
         }
     }
 }
