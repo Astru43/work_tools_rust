@@ -27,7 +27,17 @@ fn alternate<'a>(string: &'a str, odd: &'a bool) -> ansi_term::ANSIGenericString
     ansi_term::Style::new().dimmed().paint(string)
 }
 
-fn print_week(week: &Week) -> anyhow::Result<()> {
+fn week_total(week: &Week) -> f32 {
+    let mut result = 0.0;
+    for day in &week.days {
+        for hour in &day.hours {
+            result += hour.duration;
+        }
+    }
+    result
+}
+
+fn print_week(week: &Week, week_total: &f32) -> anyhow::Result<()> {
     let stdout = io::stdout();
     let lock = stdout.lock();
     let mut handle = io::BufWriter::new(lock);
@@ -49,6 +59,10 @@ fn print_week(week: &Week) -> anyhow::Result<()> {
         odd = !odd;
     }
 
+    let total_string = ansi_term::Color::Cyan
+        .bold()
+        .paint(format!("Total\t\t{}h", week_total));
+    writeln!(handle, "{}", total_string)?;
     writeln!(handle)?;
     Ok(())
 }
@@ -76,7 +90,6 @@ fn remove_file(path: &Path) -> anyhow::Result<()> {
 fn main() -> anyhow::Result<()> {
     let _ = ansi_term::enable_ansi_support();
     let args = Cli::parse();
-    // println!("{:#?}", args);
 
     let time_usage_path = Path::new("TIME_USAGE.md");
 
@@ -91,7 +104,7 @@ fn main() -> anyhow::Result<()> {
                 let Some(week) = weeks.last() else {
                     return Ok(());
                 };
-                let _ = print_week(&week);
+                let _ = print_week(&week, &week_total(&week));
                 Ok(())
             })?;
         }
@@ -101,16 +114,21 @@ fn main() -> anyhow::Result<()> {
                 let Some(start) = weeks.len().checked_sub(count.into()) else {
                     return Err(anyhow!("Index out of bounds, max len: {}", weeks.len()));
                 };
+                let mut cycel_total = 0.0;
                 for week in &weeks[start..weeks.len()] {
-                    let _ = print_week(week);
+                    let week_total = week_total(week);
+                    cycel_total += week_total;
+                    let _ = print_week(week, &week_total);
                 }
+                
+                println!("Cycle total\t{}h", cycel_total);
                 Ok(())
             })?;
         }
         _ => {
             with_weeks(time_usage_path, |weeks| {
                 for week in weeks {
-                    let _ = print_week(&week);
+                    let _ = print_week(&week, &week_total(&week));
                 }
                 Ok(())
             })?;
