@@ -71,7 +71,7 @@ lazy_static! {
         r"(?:\|\s*?(?:(\d\d?\.\d\d?) +)?(\d\d?:\d\d)\s*?\|)|(?:\|\s*?(\d+\s*?-\s*?\d+)\s*?\|)"
     );
     // Group 1: Total spent time in hours
-    static ref HOURS_REGEX: Regex = compile_regex(r"(\d(\.\d*)?)h");
+    static ref HOURS_REGEX: Regex = compile_regex(r"(\d+(\.\d*)?)h");
     // Group 1: Start of task string
     // Gourp 2: Task number
     // Group 3: Meeting
@@ -356,6 +356,12 @@ mod tests {
 
         let result = HOURS_REGEX.captures("")?;
         test_for_fail!(result, "Case 5");
+
+        let result = HOURS_REGEX.captures("100h")?;
+        test_for_success!(result, 1, "100", "Case 6");
+
+        let result = HOURS_REGEX.captures("10.25h")?;
+        test_for_success!(result, 1, "10.25", "Case 7");
 
         Ok(())
     }
