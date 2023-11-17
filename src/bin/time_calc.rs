@@ -1,4 +1,5 @@
 use std::fmt::Write as _;
+use std::fs::File;
 use std::io::Write as _;
 use std::{io, path::Path};
 
@@ -17,6 +18,9 @@ struct Cli {
     /// Delete all auto genereted files in current directory
     #[arg(short, long, exclusive(true))]
     clean: bool,
+    /// Generate csv of selected weeks called time.csv
+    #[arg(long)]
+    csv: bool,
 }
 
 fn alternate<'a>(string: &'a str, odd: &'a bool) -> ansi_term::ANSIGenericString<'a, str> {
@@ -105,6 +109,9 @@ fn main() -> anyhow::Result<()> {
                     return Ok(());
                 };
                 let _ = print_week(&week, &week_total(&week));
+                if args.csv {
+                    let _ = write_csv(&weeks[weeks.len() - 1..weeks.len()]);
+                }
                 Ok(())
             })?;
         }
@@ -120,20 +127,53 @@ fn main() -> anyhow::Result<()> {
                     cycel_total += week_total;
                     let _ = print_week(week, &week_total);
                 }
-                
+
                 println!("Cycle total\t{}h", cycel_total);
+                if args.csv {
+                    let _ = write_csv(&weeks[start..weeks.len()]);
+                }
                 Ok(())
             })?;
         }
         _ => {
             with_weeks(time_usage_path, |weeks| {
-                for week in weeks {
+                for week in &weeks {
                     let _ = print_week(&week, &week_total(&week));
+                }
+                if args.csv {
+                    let _ = write_csv(&weeks);
                 }
                 Ok(())
             })?;
         }
     }
+
+    Ok(())
+}
+
+fn write_csv(weeks: &[Week]) -> anyhow::Result<()> {
+    let mut file = File::create("time.csv")?;
+
+    let mut output = String::new();
+    for week in weeks {
+        output += &(week.week_start.clone() + "\n");
+        let mut total = 0.0;
+        for day in &week.days {
+            for hours in &day.hours {
+                total += hours.duration;
+                let line = format!(
+                    "{} {},\"{}\",\"{}\"\n",
+                    day.date,
+                    hours.time,
+                    hours.duration.to_string().replace(".", ","),
+                    hours.task
+                );
+                output += &line;
+            }
+        }
+        output += &format!("Total,\"{}\"\n\n", total.to_string().replace(".", ","));
+    }
+    write!(file, "{}", output)?;
 
     Ok(())
 }
