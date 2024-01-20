@@ -92,6 +92,7 @@ fn remove_file(path: &Path) -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
+    #[cfg(target_os = "windows")]
     let _ = ansi_term::enable_ansi_support();
     let args = Cli::parse();
 

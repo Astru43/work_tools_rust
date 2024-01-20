@@ -145,7 +145,14 @@ fn get_duration(hay: &str) -> f32 {
 }
 
 pub fn parse(path: &Path) -> anyhow::Result<Option<Vec<Week>>> {
-    let f = File::open(path)?;
+    let f = match File::open(path) {
+        Ok(file) => file,
+        Err(..) => {
+            return Err(
+                ParseError::new(format!("File {} not found", path.display()).as_str()).into(),
+            )
+        }
+    };
     let buf = BufReader::new(f);
     let mut weeks: Vec<Week> = Vec::new();
 
