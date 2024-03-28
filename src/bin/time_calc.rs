@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::Write as _;
 use std::{io, path::Path};
 
+use ansi_term::Color;
 use anyhow::anyhow;
 use clap::Parser;
 use work_tools::time_usage_parser::{parse, Week};
@@ -21,6 +22,9 @@ struct Cli {
     /// Generate csv of selected weeks called time.csv
     #[arg(long)]
     csv: bool,
+    /// File
+    #[arg(default_value("TIME_USAGE.md"))]
+    file: String,
 }
 
 fn alternate<'a>(string: &'a str, odd: &'a bool) -> ansi_term::ANSIGenericString<'a, str> {
@@ -46,7 +50,7 @@ fn print_week(week: &Week, week_total: &f32) -> anyhow::Result<()> {
     let lock = stdout.lock();
     let mut handle = io::BufWriter::new(lock);
 
-    let header_color = ansi_term::Color::Yellow.bold();
+    let header_color = Color::Yellow.bold();
     let header = header_color.paint(week.week_start.clone());
     writeln!(handle, "{}", header)?;
 
@@ -63,7 +67,7 @@ fn print_week(week: &Week, week_total: &f32) -> anyhow::Result<()> {
         odd = !odd;
     }
 
-    let total_string = ansi_term::Color::Cyan
+    let total_string = Color::Cyan
         .bold()
         .paint(format!("Total\t\t{}h", week_total));
     writeln!(handle, "{}", total_string)?;
@@ -96,8 +100,8 @@ fn main() -> anyhow::Result<()> {
     let _ = ansi_term::enable_ansi_support();
     let args = Cli::parse();
 
-    let time_usage_path = Path::new("TIME_USAGE.md");
-
+    // let time_usage_path = Path::new::<str>(args.file.as_ref());
+    let time_usage_path = Path::new::<String>(&args.file);
     match args {
         Cli { clean: true, .. } => {
             remove_file(Path::new("TOTAL.md"))?;
@@ -138,9 +142,16 @@ fn main() -> anyhow::Result<()> {
         }
         _ => {
             with_weeks(time_usage_path, |weeks| {
+                let mut total = 0.0;
                 for week in &weeks {
-                    let _ = print_week(&week, &week_total(&week));
+                    let w_total = week_total(&week);
+                    total += w_total;
+                    let _ = print_week(&week, &w_total);
                 }
+                println!(
+                    "{}",
+                    Color::Cyan.bold().paint(format!("Total\t\t{}h", total))
+                );
                 if args.csv {
                     let _ = write_csv(&weeks);
                 }
