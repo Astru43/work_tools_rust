@@ -100,7 +100,9 @@ fn get_rounded_duration(min: i64) -> String {
     let h = m / 60;
     let m = nearest_quater_hour(m);
 
-    if m % 100 == 0 {
+    if h == 0 && m % 100 == 0 {
+        String::from("0.25h")
+    } else if m % 100 == 0 {
         format!("{}h", h + m / 100)
     } else {
         format!("{}.{}h", h + m / 100, m % 100)
@@ -109,7 +111,7 @@ fn get_rounded_duration(min: i64) -> String {
 
 fn nearest_quater_hour(min: i64) -> i64 {
     let m = (min % 60) as f64 / 60.0;
-    let m = ((m + 0.125) * 4.0) as i64;
+    let m = ((m + 0.24) * 4.0) as i64;
     m * 100 / 4
 }
 
@@ -121,7 +123,6 @@ fn get_time_quater(time: &DateTime<Local>) -> String {
         let mut m = (m / 15.0) as i32 | 0;
         m *= 15;
         m %= 60;
-        println!("{}", m);
         m
     };
     let h = time.hour();
