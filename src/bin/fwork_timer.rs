@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{self, BufRead, BufReader, StderrLock, Write},
+    io::{self, BufRead, BufReader, BufWriter, Seek, SeekFrom, StderrLock, Write},
     path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -10,7 +10,8 @@ use std::{
     time::Duration,
 };
 
-use chrono::{DateTime, Datelike, Local, Timelike};
+use chrono::{DateTime, Datelike, Local, NaiveDate, Timelike};
+use fancy_regex::Regex;
 use hhmmss::Hhmmss;
 
 macro_rules! fmt {
@@ -63,7 +64,40 @@ fn main() {
         }
     };
 
-    find_last_table(&f);
+    let last = find_last_table(&f);
+    let mut tmp = path.file_name().unwrap().to_owned();
+    tmp.push("~");
+    let tmp_f = File::create(path.with_file_name(tmp));
+    let mut tmp_f = match tmp_f {
+        Ok(f) => f,
+        Err(_) => {
+            println!("File could not be written");
+            return;
+        }
+    };
+
+    f.rewind().unwrap();
+    io_copy(&mut f, &mut tmp_f, last as usize);
+
+    let mut last_table = get_last_table(&f, last).unwrap();
+    let date = Regex::new(r"- *(\d+?\.\d+?(\.\d+?)?)$").unwrap();
+    let res = date.captures(&last_table[0]).unwrap();
+    if let Some(res) = res {
+        let last_date = res.get(1).unwrap().as_str();
+        if res.get(2).is_none() {
+            let last_date = NaiveDate::parse_from_str(
+                format!("{last_date}.{}", start.year()).as_str(),
+                "%d.%m.%Y",
+            )
+            .unwrap();
+            println!("{last_date}");
+            let date = start.date_naive();
+            println!("{date}");
+
+            println!("Last date already past");
+        }
+    }
+
     let content = {
         let date = format!("{}.{}", start.day(), start.month());
         let time = get_time_quater(&start);
@@ -71,28 +105,76 @@ fn main() {
         let second_cell = get_rounded_duration(duration.num_minutes());
         format!("| {} | {} | |", first_cell, second_cell)
     };
-    let _ = writeln!(f, "{}", content);
+
+    let last_row = last_table.iter().rposition(|r| r.contains("|")).unwrap() + 1;
+    println!("{}", &last_row);
+    last_table.insert(last_row, content);
+    let _ = println!("{}", &last_table[last_row]);
+
+    let mut writer = BufWriter::new(tmp_f);
+    write_table(&mut writer, &last_table);
 }
 
-fn find_last_table(file: &File) {
+macro_rules! KB {
+    ($x: expr) => {
+        $x << 10
+    };
+}
+
+fn write_table(writer: &mut dyn std::io::Write, table: &Vec<String>) {
+    for l in table {
+        writeln!(writer, "{l}").unwrap();
+    }
+}
+
+fn io_copy(reader: &mut dyn std::io::Read, writer: &mut dyn std::io::Write, count: usize) {
+    let mut tmp_buf: [u8; KB!(16)] = [0; KB!(16)];
+    let mut remaining = count;
+    while remaining > 0 {
+        let to_copy = if remaining > KB!(16) {
+            KB!(16)
+        } else {
+            remaining
+        };
+
+        reader.read_exact(&mut tmp_buf[0..to_copy]).unwrap();
+        remaining -= to_copy;
+        writer.write_all(&mut tmp_buf[0..to_copy]).unwrap();
+    }
+}
+
+fn get_last_table(file: &File, pos: u64) -> anyhow::Result<Vec<String>> {
+    let mut lines = BufReader::new(file);
+    lines.seek(SeekFrom::Start(pos))?;
+    let table = lines.lines().map(|l| l.unwrap()).collect::<Vec<_>>();
+
+    // println!("Table:\n{:?}", &table);
+    Ok(table)
+}
+
+fn find_last_table(file: &File) -> u64 {
     let mut last = 0;
     let mut lines = BufReader::new(file);
     let mut line = String::new();
-    let mut pos = 0;
     while let Ok(num) = lines.read_line(&mut line) {
-        if (num) == 0 {
+        if num == 0 {
             break;
         }
 
         if line.starts_with("## Week ") {
-            println!("{}", pos);
-            print!("{}", line);
-            last = pos;
+            last = lines
+                .stream_position()
+                .expect("Failed to get current position");
+            last -= num as u64;
+            println!("{}", last);
+            println!("{}", line);
         }
 
-        pos += num;
         line.clear()
     }
+
+    println!("{}", last);
+    last
 }
 
 fn get_rounded_duration(min: i64) -> String {
